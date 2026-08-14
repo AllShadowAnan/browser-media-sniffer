@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaSniffer - 媒体、音频、视频与直播控制台</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="../lib/jszip.min.js"></script>
+  <script src="../lib/hls.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Navbar -->
+    <header class="top-nav">
+      <div class="nav-brand">
+        <div class="brand-logo">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <div class="brand-name">
+            MediaSniffer Hub
+            <span class="nav-badge-live" id="nav-live-count-badge" style="display:none;">LIVE</span>
+          </div>
+          <div class="source-link-wrapper" id="source-meta">
+            <span class="source-badge" id="source-tag">全页面扫描</span>
+            <a href="#" target="_blank" id="source-url" class="source-url" title="点击打开原始网页">加载中...</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls in Header -->
+      <div class="nav-controls">
+        <button class="nav-btn" id="btn-validate-streams" title="自动测试所有视频与直播流是否具有有效画面并提取真实分辨率">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+          </svg>
+          检测视频与直播画面
+        </button>
+
+        <button class="nav-btn" id="btn-refresh-tab" title="重新从网页嗅探数据">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"></path>
+            <path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          重新嗅探
+        </button>
+
+        <div class="dropdown">
+          <button class="nav-btn nav-btn-dropdown" id="btn-export-menu">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            导出清单
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="dropdown-menu" id="export-dropdown">
+            <button class="dropdown-item" id="export-txt">📄 导出为纯文本链接 (TXT)</button>
+            <button class="dropdown-item" id="export-json">📑 导出完整数据 (JSON)</button>
+            <button class="dropdown-item" id="export-csv">📊 导出媒体表格 (CSV)</button>
+            <button class="dropdown-item" id="export-m3u">📺 导出音视频与直播播放列表 (M3U)</button>
+            <button class="dropdown-item" id="export-md">📝 导出 Markdown 列表</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-container">
+      <!-- Filter and Controller Toolbar -->
+      <aside class="sidebar-filters">
+        <!-- Search -->
+        <div class="filter-group">
+          <label class="filter-label">🔍 搜索过滤</label>
+          <div class="search-input-wrapper">
+            <input type="text" id="search-input" placeholder="按文件名/格式/链接..." autocomplete="off">
+            <button id="search-clear" class="clear-btn" style="display: none;">×</button>
+          </div>
+        </div>
+
+        <!-- Video & Live Stream Health & Track Validation -->
+        <div class="filter-group live-health-box">
+          <div class="live-health-header">
+            <label class="filter-label" style="color:#f87171;margin-bottom:0;">🛡️ 视频与直播画面检测</label>
+            <span class="live-status-dot" id="live-check-indicator"></span>
+          </div>
+          
+          <div class="toggle-control-row">
+            <label class="switch-container">
+              <input type="checkbox" id="toggle-hide-no-video" checked>
+              <span class="switch-slider"></span>
+            </label>
+            <span class="toggle-label-text">仅显示有画面的视频与直播</span>
+          </div>
+
+          <div class="stream-stat-pills" id="stream-stat-box">
+            <div class="stat-pill stat-pill-valid" title="画面正常播放">🟢 <span id="stat-valid-count">0</span> 有画面</div>
+            <div class="stat-pill stat-pill-invalid" title="无法解码/无视频轨/已失效">🔴 <span id="stat-invalid-count">0</span> 无画面/失效</div>
+          </div>
+        </div>
+
+        <!-- Type Tabs -->
+        <div class="filter-group">
+          <label class="filter-label">📂 媒体分类</label>
+          <div class="type-pills type-pills-extended">
+            <button class="type-pill active" data-type="all">全部 (<span id="type-count-all">0</span>)</button>
+            <button class="type-pill" data-type="audio">🎵 音频 (<span id="type-count-audio">0</span>)</button>
+            <button class="type-pill" data-type="video">🎬 视频 (<span id="type-count-video">0</span>)</button>
+            <button class="type-pill type-pill-live" data-type="live">🔴 直播 (<span id="type-count-live">0</span>)</button>
+            <button class="type-pill" data-type="image">🖼️ 图片 (<span id="type-count-image">0</span>)</button>
+          </div>
+        </div>
+
+        <!-- Resolution Presets -->
+        <div class="filter-group">
+          <label class="filter-label">📐 尺寸与分辨率</label>
+          <div class="preset-buttons">
+            <button class="preset-btn active" data-min-w="0">全部尺寸</button>
+            <button class="preset-btn" data-min-w="300">> 300px (过滤图标)</button>
+            <button class="preset-btn" data-min-w="800">> 800px (高清)</button>
+            <button class="preset-btn" data-min-w="1920">> 1080P (超清)</button>
+          </div>
+
+          <div class="custom-dimension">
+            <div class="dim-input-group">
+              <span>宽 ≥</span>
+              <input type="number" id="dim-min-w" placeholder="0" min="0" step="50">
+              <span>px</span>
+            </div>
+            <div class="dim-input-group">
+              <span>高 ≥</span>
+              <input type="number" id="dim-min-h" placeholder="0" min="0" step="50">
+              <span>px</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aspect Ratio -->
+        <div class="filter-group">
+          <label class="filter-label">🖼️ 宽高比例</label>
+          <div class="preset-buttons">
+            <button class="ratio-btn active" data-ratio="all">全部</button>
+            <button class="ratio-btn" data-ratio="landscape">横屏 (宽>高)</button>
+            <button class="ratio-btn" data-ratio="portrait">竖屏 (高>宽)</button>
+            <button class="ratio-btn" data-ratio="square">正方形</button>
+          </div>
+        </div>
+
+        <!-- Format Chips -->
+        <div class="filter-group">
+          <label class="filter-label">🏷️ 格式标签</label>
+          <div class="format-chips" id="format-chips-container"></div>
+        </div>
+
+        <!-- Quick Reset -->
+        <button id="btn-reset-filters" class="reset-filter-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+          </svg>
+          重置所有筛选条件
+        </button>
+      </aside>
+
+      <!-- Gallery & Table View Section -->
+      <section class="gallery-section">
+        <!-- Gallery Header Bar -->
+        <div class="gallery-header-bar">
+          <div class="header-left">
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="select-all-checkbox">
+              <label for="select-all-checkbox" id="select-all-label">全选当前项 (<span id="filtered-count">0</span>)</label>
+            </div>
+            <button class="btn-text" id="btn-invert-selection">反选</button>
+            <span class="filter-notice-tag" id="hidden-streams-tag" style="display: none;">已自动过滤 <span id="hidden-count">0</span> 个无画面视频/直播</span>
+          </div>
+
+          <div class="header-right">
+            <!-- Sort dropdown -->
+            <div class="sort-wrapper">
+              <label for="sort-select">排序：</label>
+              <select id="sort-select" class="custom-select">
+                <option value="default">默认顺序</option>
+                <option value="size-desc">分辨率从大到小</option>
+                <option value="size-asc">分辨率从小到大</option>
+                <option value="name-asc">名称 A-Z</option>
+                <option value="name-desc">名称 Z-A</option>
+              </select>
+            </div>
+
+            <!-- View switches (Compact / Normal / Large / Table) -->
+            <div class="view-switches">
+              <button class="view-btn" data-view="compact" title="密集网格">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+              </button>
+              <button class="view-btn active" data-view="normal" title="标准网格">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"></rect><rect x="13" y="3" width="8" height="8" rx="2"></rect><rect x="3" y="13" width="8" height="8" rx="2"></rect><rect x="13" y="13" width="8" height="8" rx="2"></rect></svg>
+              </button>
+              <button class="view-btn" data-view="large" title="大图展示">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3"></rect></svg>
+              </button>
+              <button class="view-btn" data-view="table" title="列表表格视图">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v4H3V4zm0 6h18v4H3v-4zm0 6h18v4H3v-4z"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cards Grid Container -->
+        <div class="cards-grid" id="cards-grid"></div>
+
+        <!-- Table View Container -->
+        <div class="table-view-wrapper" id="table-view-wrapper" style="display: none;">
+          <table class="media-table">
+            <thead>
+              <tr>
+                <th width="40"><input type="checkbox" id="table-select-all"></th>
+                <th width="70">预览</th>
+                <th>文件名 / 标题</th>
+                <th width="90">类型</th>
+                <th width="110">状态</th>
+                <th width="80">格式</th>
+                <th width="120">分辨率 / 规格</th>
+                <th>媒体 URL / 资源地址</th>
+                <th width="160">操作</th>
+              </tr>
+            </thead>
+            <tbody id="table-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="empty-state" style="display: none;">
+          <div class="empty-icon">📂</div>
+          <div class="empty-title">未发现匹配的媒体、音频、视频或直播流</div>
+          <div class="empty-desc">若部分视频或直播因无画面被自动隐藏，可在左侧关闭「仅显示有画面的视频与直播」以查看所有嗅探项。</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Floating Batch Action Bar -->
+    <div class="floating-batch-bar" id="floating-batch-bar">
+      <div class="batch-left">
+        <span class="batch-count-badge" id="selected-badge">已选择 0 项</span>
+        <span class="batch-meta" id="selected-meta">包含 0 张图片，0 个视频</span>
+      </div>
+      <div class="batch-actions">
+        <button class="batch-btn batch-btn-zip" id="btn-batch-zip">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+          打包 ZIP 下载
+        </button>
+
+        <button class="batch-btn batch-btn-direct" id="btn-batch-download">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          直接批量下载
+        </button>
+
+        <button class="batch-btn batch-btn-copy" id="btn-batch-copy">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          复制所选链接
+        </button>
+
+        <button class="batch-btn-close" id="btn-deselect-all" title="取消所有选择">✕</button>
+      </div>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div class="lightbox-modal" id="lightbox-modal" style="display: none;">
+      <div class="lightbox-backdrop" id="lightbox-backdrop"></div>
+      <div class="lightbox-container">
+        <!-- Close & Controls -->
+        <div class="lightbox-top-bar">
+          <div class="lightbox-index" id="lightbox-index">1 / 10</div>
+          <div class="lightbox-controls">
+            <button class="lightbox-btn" id="lightbox-btn-potplayer" title="用 PotPlayer / 外部播放器打开" style="display:none;">
+              📺 外部播放
+            </button>
+            <button class="lightbox-btn" id="lightbox-btn-download" title="下载此文件">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>
+            <button class="lightbox-btn" id="lightbox-btn-copy" title="复制链接">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button class="lightbox-btn" id="lightbox-btn-open-tab" title="在新标签打开">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+            <button class="lightbox-btn lightbox-close" id="lightbox-btn-close" title="关闭 (ESC)">✕</button>
+          </div>
+        </div>
+
+        <!-- Center Media Display -->
+        <div class="lightbox-media-wrapper" id="lightbox-media-wrapper"></div>
+
+        <!-- Navigation Arrows -->
+        <button class="lightbox-nav-btn nav-prev" id="lightbox-prev" title="上一张 (←)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <button class="lightbox-nav-btn nav-next" id="lightbox-next" title="下一张 (→)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+
+        <!-- Bottom Details Bar -->
+        <div class="lightbox-bottom-bar">
+          <div class="lightbox-title" id="lightbox-title">文件名.jpg</div>
+          <div class="lightbox-meta-info" id="lightbox-meta-info">1920 × 1080 • JPG • 来源: IMG</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global Toast Alert -->
+    <div class="dashboard-toast" id="dash-toast" style="display: none;"></div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
